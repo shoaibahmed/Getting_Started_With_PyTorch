@@ -1,0 +1,12 @@
+*~
+*.pyc
+*.pth
+
+*secret*
+
+.idea/
+.python-version
+__pycache__/
+
+data/
+logs/
