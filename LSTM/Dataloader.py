@@ -18,7 +18,7 @@ else:
 class MyDataset(Dataset):
 	"""My custom dataset."""
 
-	def __init__(self, root_dir, transform=None):
+	def __init__(self, root_dir, split, transform=None):
 		"""
 		Args:
 			root_dir (string): Directory with all the pickle files.
@@ -42,6 +42,18 @@ class MyDataset(Dataset):
 					self.data = np.vstack((self.data, data[0]))
 
 				self.labels = np.concatenate((self.labels, data[1]))
+
+		# Split in train/test
+		self.split = split
+		if self.split == 'Train':
+			pass # Select only training examples (modify self.data and self.labels)
+		elif self.split == 'Validation':
+			pass # Select only validation examples
+		elif self.split == 'Test':
+			pass # Select only test examples
+		else:
+			print ("Error: Unknown data split!")
+			exit (-1)
 
 		########### Integrated into the model itself ###########
 		# # Reshape the data into sequences (only for LSTM)

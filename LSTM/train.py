@@ -25,7 +25,7 @@ def train(batchSize, epochs, displayStep, sequenceLength, bidirectional, hiddenS
 	os.mkdir(outputDir)
 
 	# Create dataloader
-	dataset = MyDataset(rootDir)
+	dataset = MyDataset(rootDir, split='Train')
 	dataLoader = DataLoader(dataset=dataset, num_workers=1, batch_size=batchSize, shuffle=False)
 
 	# Create model
@@ -70,7 +70,60 @@ def train(batchSize, epochs, displayStep, sequenceLength, bidirectional, hiddenS
 		torch.save(model.state_dict(), os.path.join(outputDir, "model.pth"))
 
 def test():
-	pass
+	# Clear output directory
+	if not os.path.exists(outputDir):
+		print ("Error: Model directory does not exist!")
+		exit (-1)
+
+	# Create dataloader
+	dataset = MyDataset(rootDir, split='Test')
+	dataLoader = DataLoader(dataset=dataset, num_workers=1, batch_size=batchSize, shuffle=False)
+
+	# Create model
+	featureVectorLength = dataset.getFeatureVectorLength()
+	numberOfClasses = dataset.getNumClasses()
+	print ("Feature vector size: %d | Number of classes: %d" % (featureVectorLength, numberOfClasses))
+	assert((featureVectorLength % sequenceLength) == 0, "Error: Sequence length should split the sequence into equal chunks")
+	featureVectorLength = int(featureVectorLength / sequenceLength)
+	model = LSTM(sequenceLength, featureVectorLength, hiddenDims=hiddenStateDims, numClasses=numberOfClasses, numLayers=numLayers, dropout=0.0, bidirectional=bidirectional)
+	model.to(device) # Move the model to desired device
+
+	# Save model
+	modelCheckpoint = torch.load(os.path.join(outputDir, "model.pth"))
+	model.load_state_dict(modelCheckpoint)
+	print ("Model restored!")
+
+	gtLabels = []
+	predictedLabels = []
+	for iterationIdx, data in enumerate(dataLoader):
+		X = data["data"]
+		y = data["label"]
+
+		# Move the data to PyTorch on the desired device
+		X = Variable(X).float().to(device)
+		y = Variable(y).long().to(device)
+
+		# Get model predictions
+		outputs = model(X)
+
+		# Check prediction
+		_, preds = torch.max(outputs.data, dim=1)
+		correctPred = torch.sum(preds == labels.data)
+		correctExamples = correctPred.item()
+
+		# Add the labels
+		gtLabels.append(data["label"])
+		predictedLabels.append(preds.numpy())
+
+		print ("Iteration: %d | Correct examples: %d | Total examples: %d | Accuracy: %.5f" % (iterationIdx, correctExamples, \
+				len(predictedLabels[-1]), float(correctExamples) / len(predictedLabels[-1]))
+
+	# Compute statistics
+	gtLabels = np.array(gtLabels).flatten()
+	predictedLabels = np.array(predictedLabels).flatten()
+
+	print ("GT labels shape:", gtLabels.shape)
+	print ("Predicted labels shape:", predictedLabels.shape)
 
 if __name__ == "__main__":
 	# Command line options
