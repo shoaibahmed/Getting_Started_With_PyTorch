@@ -86,7 +86,7 @@ class MyDataset(Dataset):
 
 if __name__ == "__main__":
 	print ("Test dataloader")
-	dataset = MyDataset("../data/p_data")
+	dataset = MyDataset("../data/p_data", split="Train")
 	dataLoader = DataLoader(dataset=dataset, num_workers=1, batch_size=5, shuffle=False)
 
 	for idx, data in enumerate(dataLoader):
