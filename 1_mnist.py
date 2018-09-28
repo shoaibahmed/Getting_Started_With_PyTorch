@@ -9,6 +9,8 @@ import torch
 import torch.nn.functional as F
 from torchvision import datasets, transforms
 
+from optim.lbfgs_new import SdLBFGS
+
 # Command line options
 parser = OptionParser()
 
@@ -100,7 +102,7 @@ lossDict = {}
 
 # Iterate over the different optimizers
 # for optimizer in [("SGD", optimizerSGD), ("AdaDelta", optimizerAdadelta), ("Adam", optimizerAdam)]:
-for optimizer in ["LBFGS", "SGD", "AdaDelta", "Adam"]:
+for optimizer in ["Updated LBFGS", "LBFGS", "SGD", "AdaDelta", "Adam"]:
 	print ("Selected optimizer: %s" % optimizer)
 	lossDict[optimizer] = {"train" : [], "test": []}
 
@@ -117,8 +119,11 @@ for optimizer in ["LBFGS", "SGD", "AdaDelta", "Adam"]:
 		optim = torch.optim.SGD(model.parameters(), lr=1e-1)
 	elif optimizer == "AdaDelta":
 		optim = torch.optim.Adadelta(model.parameters(), lr=3e-1)
-	elif optimizer == "LBFGS":
-		optim = torch.optim.LBFGS(model.parameters(), lr=1e-5)
+	elif optimizer == "LBFGS" or optimizer == "Updated LBFGS":
+		if optimizer == "Updated LBFGS":
+			optim = SdLBFGS(model.parameters(), lr=1.0)
+		else:
+			optim = torch.optim.LBFGS(model.parameters(), lr=1e-5)
 
 		# Specifically used for LBFGS
 		def closure():
@@ -146,16 +151,7 @@ for optimizer in ["LBFGS", "SGD", "AdaDelta", "Adam"]:
 			with torch.no_grad():
 				data, target = torch.autograd.Variable(data), torch.autograd.Variable(target)
 
-			if optimizer != "LBFGS":
-				optim.zero_grad()
-				output = model(data)
-				# loss = F.nll_loss(output, target)
-				currentLoss = loss(output, target)
-				lossTrain = currentLoss.item()
-				currentLoss.backward()
-				optim.step()
-
-			else:
+			if optimizer == "LBFGS" or optimizer == "Updated LBFGS":
 				optim.step(closure)
 				# current_params = parameters_to_vector(model.parameters())
 				# if any(np.isnan(current_params.data.cpu().numpy())):
@@ -165,6 +161,15 @@ for optimizer in ["LBFGS", "SGD", "AdaDelta", "Adam"]:
 				output = model(data)
 				currentLoss = loss(output, target)
 				lossTrain = currentLoss.item()
+
+			else:
+				optim.zero_grad()
+				output = model(data)
+				# loss = F.nll_loss(output, target)
+				currentLoss = loss(output, target)
+				lossTrain = currentLoss.item()
+				currentLoss.backward()
+				optim.step()				
 
 			print ("Epoch: %d | Step: %d | Train Loss: %f | Test Loss: %f" % (epoch, step, lossTrain, lossTest))
 			lossDict[optimizer]["train"].append(lossTrain)
