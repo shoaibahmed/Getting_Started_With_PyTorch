@@ -65,7 +65,7 @@ class Net(torch.nn.Module):
 		x = self.dropout(x)
 		# print ("Size of x: %s" % str(x.size())) # Should be 7x7x32
 		x = x.view(-1, self.num_flat_features(x))
-		x = F.tanh(self.fc1(x))
+		x = torch.tanh(self.fc1(x))
 		x = self.dropoutTwo(x)
 		x = self.fc2(x)
 		return x
@@ -78,25 +78,29 @@ class Net(torch.nn.Module):
 		return num_features
 
 def testModel():
-	# Perform test step
-	model.eval()
-	lossTest = 0.0
-	correct = 0
-	for data, target in test_loader:
-		if options.cuda:
-			data, target = data.cuda(), target.cuda()
-		data, target = torch.autograd.Variable(data, volatile=True), torch.autograd.Variable(target)
-		output = model(data)
-		# lossTest += F.nll_loss(output, target, size_average=False).data[0] # sum up batch loss
-		lossTest += loss(output, target).data[0]
-		pred = output.data.max(1, keepdim=True)[1] # get the index of the max log-probability
-		correct += pred.eq(target.data.view_as(pred)).cpu().sum()
-	return lossTest
+	with torch.no_grad():
+		# Perform test step
+		model.eval()
+		lossTest = 0.0
+		correct = 0
+		for data, target in test_loader:
+			if options.cuda:
+				data, target = data.cuda(), target.cuda()
+
+			data, target = torch.autograd.Variable(data), torch.autograd.Variable(target)
+
+			output = model(data)
+			# lossTest += F.nll_loss(output, target, size_average=False).data[0] # sum up batch loss
+			lossTest += loss(output, target).item()
+			pred = output.data.max(1, keepdim=True)[1] # get the index of the max log-probability
+			correct += pred.eq(target.data.view_as(pred)).cpu().sum()
+		return lossTest
 
 lossDict = {}
+
 # Iterate over the different optimizers
 # for optimizer in [("SGD", optimizerSGD), ("AdaDelta", optimizerAdadelta), ("Adam", optimizerAdam)]:
-for optimizer in ["SGD", "AdaDelta", "Adam"]:
+for optimizer in ["LBFGS", "SGD", "AdaDelta", "Adam"]:
 	print ("Selected optimizer: %s" % optimizer)
 	lossDict[optimizer] = {"train" : [], "test": []}
 
@@ -113,6 +117,16 @@ for optimizer in ["SGD", "AdaDelta", "Adam"]:
 		optim = torch.optim.SGD(model.parameters(), lr=1e-1)
 	elif optimizer == "AdaDelta":
 		optim = torch.optim.Adadelta(model.parameters(), lr=3e-1)
+	elif optimizer == "LBFGS":
+		optim = torch.optim.LBFGS(model.parameters(), lr=1e-5)
+
+		# Specifically used for LBFGS
+		def closure():
+			output = model(data)
+			currentLoss = loss(output, target)
+			currentLoss.backward()
+			return currentLoss
+
 	else:
 		optim = torch.optim.Adam(model.parameters(), lr=options.learningRate)
 
@@ -121,20 +135,36 @@ for optimizer in ["SGD", "AdaDelta", "Adam"]:
 		step = 0
 		for batch_idx, (data, target) in enumerate(train_loader):
 			# Compute test loss first since the error reported after optimization will be lower than the train error
+			model.eval()
 			lossTest = testModel()
 
 			# Perform the training step
 			model.train()
 			if options.cuda:
 				data, target = data.cuda(), target.cuda()
-			data, target = torch.autograd.Variable(data), torch.autograd.Variable(target)
-			optim.zero_grad()
-			output = model(data)
-			# loss = F.nll_loss(output, target)
-			currentLoss = loss(output, target)
-			lossTrain = currentLoss.data[0]
-			currentLoss.backward()
-			optim.step()
+
+			with torch.no_grad():
+				data, target = torch.autograd.Variable(data), torch.autograd.Variable(target)
+
+			if optimizer != "LBFGS":
+				optim.zero_grad()
+				output = model(data)
+				# loss = F.nll_loss(output, target)
+				currentLoss = loss(output, target)
+				lossTrain = currentLoss.item()
+				currentLoss.backward()
+				optim.step()
+
+			else:
+				optim.step(closure)
+				# current_params = parameters_to_vector(model.parameters())
+				# if any(np.isnan(current_params.data.cpu().numpy())):
+				# 	print("LBFGS optimization diverged. Rolling back update...")
+				# 	vector_to_parameters(old_params, model.parameters())
+
+				output = model(data)
+				currentLoss = loss(output, target)
+				lossTrain = currentLoss.item()
 
 			print ("Epoch: %d | Step: %d | Train Loss: %f | Test Loss: %f" % (epoch, step, lossTrain, lossTest))
 			lossDict[optimizer]["train"].append(lossTrain)
