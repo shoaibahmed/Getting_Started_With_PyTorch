@@ -55,6 +55,10 @@ def train(options):
 	# Move the model to desired device
 	model.to(device)
 
+	if torch.cuda.device_count() > 1:
+		print("Using", torch.cuda.device_count(), "GPUs!")
+		model = torch.nn.DataParallel(model)
+
 	# Create dataloader
 	dataTransform = transforms.Compose([
 		transforms.RandomResizedCrop(input_size, scale=(0.7, 1.0)),
@@ -63,12 +67,12 @@ def train(options):
 		transforms.Normalize(mean=mean, std=std)])
 
 	dataset = MyDataset(options.rootDir, split=Data.TRAIN, transform=dataTransform)
-	dataLoader = DataLoader(dataset=dataset, num_workers=4, batch_size=options.batchSize, shuffle=False)
+	dataLoader = DataLoader(dataset=dataset, num_workers=8, batch_size=options.batchSize, shuffle=False)
 	assert options.numClasses == dataset.getNumClasses(), "Error: Number of classes found in the dataset is not equal to the number of classes specified in the options (%d != %d)!" % (dataset.getNumClasses(), options.numClasses)
 
 	# Define optimizer
-	optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
-	scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=2)
+	optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=1e-5)
+	scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=10)
 
 	# Define loss function
 	criterion = torch.nn.CrossEntropyLoss()
@@ -91,6 +95,7 @@ def train(options):
 			loss = criterion(pred, y)
 			loss.backward()
 			optimizer.step()
+			# scheduler.step(val_loss)
 
 			if iterationIdx % options.displayStep == 0:
 				print("Epoch %d | Iteration: %d | Loss: %.5f" % (epoch, iterationIdx, loss))
@@ -161,7 +166,7 @@ if __name__ == "__main__":
 	parser.add_option("-c", "--testModel", action="store_true", dest="testModel", default=False, help="Test model")
 	parser.add_option("-o", "--outputDir", action="store", type="string", dest="outputDir", default="./output", help="Output directory")
 	parser.add_option("-e", "--trainingEpochs", action="store", type="int", dest="trainingEpochs", default=10, help="Number of training epochs")
-	parser.add_option("-b", "--batchSize", action="store", type="int", dest="batchSize", default=10, help="Batch Size")
+	parser.add_option("-b", "--batchSize", action="store", type="int", dest="batchSize", default=22, help="Batch Size")
 	parser.add_option("-d", "--displayStep", action="store", type="int", dest="displayStep", default=2, help="Display step where the loss should be displayed")
 
 	# Input Reader Params

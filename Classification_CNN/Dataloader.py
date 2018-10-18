@@ -1,6 +1,6 @@
 import os
 import sys
-import numpy as np
+from random import shuffle
 from PIL import Image
 
 import torch
@@ -32,8 +32,12 @@ class MyDataset(Dataset):
 				if file.endswith(".png"):
 					self.files.append(os.path.abspath(os.path.join(root, file)))
 
+		# Randomly shuffle the files
+		shuffle(self.files)
+
 		self.transform = transform
 		print("Classes:", self.classes)
+		self.oneHot = False # Torch can't deal with one-hot vectors
 
 	def getNumClasses(self):
 		return len(self.classes)
@@ -48,10 +52,12 @@ class MyDataset(Dataset):
 			img = self.transform(img)
 
 		label = int(file.split(os.sep)[-3])
-		oneHot = np.zeros(self.getNumClasses())
-		oneHot[label] = 1.0
+		if self.oneHot:
+			oneHot = np.zeros(self.getNumClasses())
+			oneHot[label] = 1.0
+			label = oneHot
 
-		sample = {'data': img, 'label': oneHot}
+		sample = {'data': img, 'label': label}
 		return sample
 
 
