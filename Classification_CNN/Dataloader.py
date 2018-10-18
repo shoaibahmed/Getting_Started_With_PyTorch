@@ -54,7 +54,10 @@ class MyDataset(Dataset):
 		self.oneHot = False # Torch can't deal with one-hot vectors
 
 	def getNumClasses(self):
-		return len(self.classes)
+		if self.useClassNames:
+			return len(self.class_names)
+		else:
+			return len(self.classes)
 
 	def __len__(self):
 		return len(self.files)
