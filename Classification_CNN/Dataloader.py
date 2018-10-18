@@ -18,7 +18,7 @@ class Data(Enum):
 class MyDataset(Dataset):
 	"""My custom dataset."""
 
-	def __init__(self, root_dir, split=Data.TRAIN, transform=None):
+	def __init__(self, root_dir, split=Data.TRAIN, transform=None, useClassNames=True):
 		"""
 		Args:
 			root_dir (string): Directory with all the pickle files.
@@ -26,17 +26,31 @@ class MyDataset(Dataset):
 				on a sample.
 		"""
 		self.files = []
-		self.classes = [int(cls) for cls in os.listdir(root_dir) if cls != "./"]
+		self.useClassNames = useClassNames
+		self.imageFormats = [".jpg", ".png", ".bmp"]
+
+		if self.useClassNames:
+			self.class_names = [cls for cls in os.listdir(root_dir) if cls != "./"]
+
+			# Assign IDs to the class names
+			self.class_dict = {}
+			for idx, cls in enumerate(self.class_names):
+				self.class_dict[cls] = idx
+		else:
+			self.classes = [int(cls) for cls in os.listdir(root_dir) if cls != "./"]
+
 		for root, dirs, files in os.walk(root_dir):
 			for file in files:
-				if file.endswith(".png"):
-					self.files.append(os.path.abspath(os.path.join(root, file)))
+				for imageFormat in self.imageFormats:
+					if file.endswith(imageFormat):
+						self.files.append(os.path.abspath(os.path.join(root, file)))
+						break
 
 		# Randomly shuffle the files
 		shuffle(self.files)
 
 		self.transform = transform
-		print("Classes:", self.classes)
+		print("Classes:", self.class_dict)
 		self.oneHot = False # Torch can't deal with one-hot vectors
 
 	def getNumClasses(self):
@@ -51,7 +65,11 @@ class MyDataset(Dataset):
 		if self.transform:
 			img = self.transform(img)
 
-		label = int(file.split(os.sep)[-3])
+		if self.useClassNames:
+			label = self.class_dict[file.split(os.sep)[-3]]
+		else:
+			label = int(file.split(os.sep)[-3])
+
 		if self.oneHot:
 			oneHot = np.zeros(self.getNumClasses())
 			oneHot[label] = 1.0
@@ -65,7 +83,7 @@ if __name__ == "__main__":
 	print("Test dataloader")
 
 	dataTransform = transforms.Compose([
-		transforms.RandomSizedCrop(224),
+		transforms.RandomResizedCrop(224, scale=(0.7, 1.0)),
 		transforms.RandomHorizontalFlip(),
 		transforms.ToTensor(),
 		transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
