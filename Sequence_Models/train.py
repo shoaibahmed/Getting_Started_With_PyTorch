@@ -17,25 +17,36 @@ from Models import *
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-def train(batchSize, epochs, displayStep, sequenceLength, bidirectional, hiddenStateDims, numLayers, rootDir, outputDir):
+def train(options):
 	# Clear output directory
-	if os.path.exists(outputDir):
+	if os.path.exists(options.outputDir):
 		print ("Removing old directory!")
-		shutil.rmtree(outputDir)
-	os.mkdir(outputDir)
+		shutil.rmtree(options.outputDir)
+	os.mkdir(options.outputDir)
 
 	# Create dataloader
-	dataset = MyDataset(rootDir, split='Train')
-	dataLoader = DataLoader(dataset=dataset, num_workers=1, batch_size=batchSize, shuffle=False)
+	dataset = MyDataset(options.rootDir, split=Data.TRAIN)
+	dataLoader = DataLoader(dataset=dataset, num_workers=1, batch_size=options.batchSize, shuffle=False)
 
 	# Create model
-	featureVectorLength = dataset.getFeatureVectorLength()
+	inputShape = dataset.getDataShape()
 	numberOfClasses = dataset.getNumClasses()
-	print ("Feature vector size: %d | Number of classes: %d" % (featureVectorLength, numberOfClasses))
-	assert((featureVectorLength % sequenceLength) == 0, "Error: Sequence length should split the sequence into equal chunks")
-	featureVectorLength = int(featureVectorLength / sequenceLength)
-	model = LSTM(sequenceLength, featureVectorLength, hiddenDims=hiddenStateDims, numClasses=numberOfClasses, numLayers=numLayers, dropout=0.0, bidirectional=bidirectional)
+	print ("Input shape: %s | Number of classes: %d" % (str(inputShape), numberOfClasses))
+
+	if options.useLSTM:
+		featureVectorLength = inputShape[0]
+		assert((featureVectorLength % options.sequenceLength) == 0, "Error: Sequence length should split the sequence into equal chunks")
+		featureVectorLength = int(featureVectorLength / options.sequenceLength)
+		model = LSTM(options.sequenceLength, featureVectorLength, hiddenDims=options.hiddenStateDims, numClasses=numberOfClasses,
+					 numLayers=options.numLayers, dropout=0.0, bidirectional=options.bidirectional)
+	else:
+		model = CNN(numberOfClasses, inputShape, numFilters=(32, 64, 128))
+
 	model.to(device) # Move the model to desired device
+
+	if torch.cuda.device_count() > 1:
+		print("Using", torch.cuda.device_count(), "GPUs!")
+		model = torch.nn.DataParallel(model)
 
 	# Define optimizer
 	optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=1e-5)
@@ -44,7 +55,7 @@ def train(batchSize, epochs, displayStep, sequenceLength, bidirectional, hiddenS
 	# Define loss function
 	criterion = torch.nn.CrossEntropyLoss()
 
-	for epoch in range(epochs):
+	for epoch in range(options.trainingEpochs):
 		# Start training
 		for iterationIdx, data in enumerate(dataLoader):
 			X = data["data"]
@@ -63,35 +74,41 @@ def train(batchSize, epochs, displayStep, sequenceLength, bidirectional, hiddenS
 			loss.backward()
 			optimizer.step()
 
-			if iterationIdx % displayStep == 0:
+			if iterationIdx % options.displayStep == 0:
 				print ("Epoch %d | Iteration: %d | Loss: %.5f" % (epoch, iterationIdx, loss))
 
 		# Save model
-		torch.save(model.state_dict(), os.path.join(outputDir, "model.pth"))
+		torch.save(model.state_dict(), os.path.join(options.outputDir, "model.pth"))
 
-def test():
+def test(options):
 	# Clear output directory
-	if not os.path.exists(outputDir):
+	if not os.path.exists(options.outputDir):
 		print ("Error: Model directory does not exist!")
 		exit (-1)
 
 	# Create dataloader
-	dataset = MyDataset(rootDir, split='Test')
-	dataLoader = DataLoader(dataset=dataset, num_workers=1, batch_size=batchSize, shuffle=False)
+	dataset = MyDataset(options.rootDir, split=Data.TEST)
+	dataLoader = DataLoader(dataset=dataset, num_workers=1, batch_size=options.batchSize, shuffle=False)
 
 	# Create model
-	featureVectorLength = dataset.getFeatureVectorLength()
+	inputShape = dataset.getDataShape()
 	numberOfClasses = dataset.getNumClasses()
-	print ("Feature vector size: %d | Number of classes: %d" % (featureVectorLength, numberOfClasses))
-	assert((featureVectorLength % sequenceLength) == 0, "Error: Sequence length should split the sequence into equal chunks")
-	featureVectorLength = int(featureVectorLength / sequenceLength)
-	model = LSTM(sequenceLength, featureVectorLength, hiddenDims=hiddenStateDims, numClasses=numberOfClasses, numLayers=numLayers, dropout=0.0, bidirectional=bidirectional)
-	model.to(device) # Move the model to desired device
+	print("Input shape: %s | Number of classes: %d" % (str(inputShape), numberOfClasses))
+
+	if options.useLSTM:
+		featureVectorLength = inputShape[0]
+		assert ((featureVectorLength % options.sequenceLength) == 0,
+				"Error: Sequence length should split the sequence into equal chunks")
+		featureVectorLength = int(featureVectorLength / options.sequenceLength)
+		model = LSTM(options.sequenceLength, featureVectorLength, hiddenDims=options.hiddenStateDims, numClasses=numberOfClasses,
+					 numLayers=options.numLayers, dropout=0.0, bidirectional=options.bidirectional)
+	else:
+		model = CNN(numberOfClasses, inputShape, numFilters=(32, 64, 128))
 
 	# Save model
-	modelCheckpoint = torch.load(os.path.join(outputDir, "model.pth"))
+	modelCheckpoint = torch.load(os.path.join(options.outputDir, "model.pth"))
 	model.load_state_dict(modelCheckpoint)
-	print ("Model restored!")
+	print("Model restored!")
 
 	gtLabels = []
 	predictedLabels = []
@@ -108,22 +125,22 @@ def test():
 
 		# Check prediction
 		_, preds = torch.max(outputs.data, dim=1)
-		correctPred = torch.sum(preds == labels.data)
+		correctPred = torch.sum(preds == y.data)
 		correctExamples = correctPred.item()
 
 		# Add the labels
 		gtLabels.append(data["label"])
 		predictedLabels.append(preds.numpy())
 
-		print ("Iteration: %d | Correct examples: %d | Total examples: %d | Accuracy: %.5f" % (iterationIdx, correctExamples, \
-				len(predictedLabels[-1]), float(correctExamples) / len(predictedLabels[-1]))
+		print("Iteration: %d | Correct examples: %d | Total examples: %d | Accuracy: %.5f" % (iterationIdx, correctExamples, len(predictedLabels[-1]), float(correctExamples) / len(predictedLabels[-1])))
 
 	# Compute statistics
 	gtLabels = np.array(gtLabels).flatten()
 	predictedLabels = np.array(predictedLabels).flatten()
 
-	print ("GT labels shape:", gtLabels.shape)
-	print ("Predicted labels shape:", predictedLabels.shape)
+	print("GT labels shape:", gtLabels.shape)
+	print("Predicted labels shape:", predictedLabels.shape)
+
 
 if __name__ == "__main__":
 	# Command line options
@@ -139,9 +156,10 @@ if __name__ == "__main__":
 	parser.add_option("-d", "--displayStep", action="store", type="int", dest="displayStep", default=2, help="Display step where the loss should be displayed")
 
 	# Network params
+	parser.add_option("--useLSTM", action="store_true", dest="useLSTM", default=False, help="Use LSTM network instead of a CNN")
 	parser.add_option("--bidirectional", action="store_true", dest="bidirectional", default=False, help="Whether to use bidirectional LSTM")
 	parser.add_option("--hiddenStateDims", action="store", type="int", dest="hiddenStateDims", default=10, help="Dimensionality of the hidden state")
-	parser.add_option("--numLayers", action="store", type="int", dest="numLayers", default=2, help="Number of layers in the LSTM network")
+	parser.add_option("--numLayers", action="store", type="int", dest="numLayers", default=3, help="Number of layers in the LSTM network")
 	
 	# Input Reader Params
 	parser.add_option("--rootDir", action="store", type="string", dest="rootDir", default="../data/", help="Root directory containing the data")
@@ -149,13 +167,12 @@ if __name__ == "__main__":
 
 	# Parse command line options
 	(options, args) = parser.parse_args()
-	print (options)
+	print(options)
 
 	if options.trainModel:
-		print ("Training model")
-		train(options.batchSize, options.trainingEpochs, options.displayStep, options.sequenceLength, options.bidirectional, options.hiddenStateDims, \
-			  options.numLayers, options.rootDir, options.outputDir)
+		print("Training model")
+		train(options)
 
 	if options.testModel:
-		print ("Testing model")
-		test()
+		print("Testing model")
+		test(options)
