@@ -9,10 +9,10 @@ from torch.utils.data import Dataset, DataLoader
 
 PYTHON_3 = True
 if sys.version_info[0] == 3:
-	print ("Using Python 3")
+	print("Using Python 3")
 	import pickle
 else:
-	print ("Using Python 2")
+	print("Using Python 2")
 	import cPickle as pickle
 	PYTHON_3 = False
 
