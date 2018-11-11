@@ -44,6 +44,8 @@ def train(batchSize, epochs, displayStep, sequenceLength, bidirectional, hiddenS
 
 	for epoch in range(epochs):
 		# Start training
+		model.train()
+
 		for iterationIdx, data in enumerate(dataLoader):
 			X = data["data"]
 			y = data["mask"]

@@ -57,6 +57,8 @@ def train(options):
 
     for epoch in range(options.trainingEpochs):
         # Start training
+        model.train()
+
         for iterationIdx, data in enumerate(dataLoader):
             X = data["data"]
             y = data["label"]
@@ -111,6 +113,7 @@ def test(options):
 
     gtLabels = []
     predictedLabels = []
+    model.eval()
     for iterationIdx, data in enumerate(dataLoader):
         X = data["data"]
         y = data["label"]
