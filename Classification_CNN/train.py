@@ -59,12 +59,12 @@ def train(options):
         assert model.input_size[1] == model.input_size[2], "Error: Models expects different dimensions for height and width"
         assert model.input_space == "RGB", "Error: Data loaded in RGB format while the model expects BGR"
 
-    # Move the model to desired device
-    model.to(device)
-
     if torch.cuda.device_count() > 1:
         print("Using", torch.cuda.device_count(), "GPUs!")
         model = torch.nn.DataParallel(model)
+
+    # Move the model to desired device
+    model.to(device)
 
     # Create dataloader
     dataTransform = transforms.Compose([
@@ -216,7 +216,7 @@ if __name__ == "__main__":
     parser.add_option("-c", "--testModel", action="store_true", dest="testModel", default=False, help="Test model")
     parser.add_option("-o", "--outputDir", action="store", type="string", dest="outputDir", default="./output", help="Output directory")
     parser.add_option("-e", "--trainingEpochs", action="store", type="int", dest="trainingEpochs", default=10, help="Number of training epochs")
-    parser.add_option("-b", "--batchSize", action="store", type="int", dest="batchSize", default=22, help="Batch Size")
+    parser.add_option("-b", "--batchSize", action="store", type="int", dest="batchSize", default=22, help="Batch Size (will be divided equally among different GPUs in multi-GPU settings)")
     parser.add_option("-d", "--displayStep", action="store", type="int", dest="displayStep", default=2, help="Display step where the loss should be displayed")
 
     # Input Reader Params
